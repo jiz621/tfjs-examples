@@ -16,28 +16,34 @@
  */
 
 import * as tf from '@tensorflow/tfjs';
+import * as tfvis from '@tensorflow/tfjs-vis';
 
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('plot');
+const lossCanvas = document.getElementById('lossCanvas');
+
 const order = 3;
 // Convert world coordinates to canvas ones.
 function world2canvas(canvas, x, y) {
   return [x + canvas.width / 2, -y + canvas.height / 2];
 }
+
 // Draw x and y axes in the canvas.
-function drawAxes(canvas) {
+function drawAxes(canvas, hasXAxes) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.beginPath();
-  const leftCoord = world2canvas(canvas, -canvas.width / 2, 0);
-  const rightCoord = world2canvas(canvas, canvas.width / 2, 0);
-  ctx.moveTo(leftCoord[0], leftCoord[1]);
-  ctx.lineTo(rightCoord[0], rightCoord[1]);
-  ctx.stroke();
+  if (hasXAxes) {
+    const leftCoord = world2canvas(canvas, -canvas.width / 2, 0);
+    const rightCoord = world2canvas(canvas, canvas.width / 2, 0);
+    ctx.moveTo(leftCoord[0], leftCoord[1]);
+    ctx.lineTo(rightCoord[0], rightCoord[1]);
+    ctx.stroke();
+  }
   const topCoord = world2canvas(canvas, 0, canvas.height / 2);
   const bottomCoord = world2canvas(canvas, 0, -canvas.height / 2);
   ctx.moveTo(topCoord[0], topCoord[1]);
   ctx.lineTo(bottomCoord[0], bottomCoord[1]);
-  ctx.stroke();
+  ctx.stroke();    
 }
 
 // Draw x and y data in the canvas.
@@ -47,8 +53,8 @@ function drawAxes(canvas) {
 // Args:
 //   canvas: The canvas to draw the data in.
 //   xyData: An Array of [x, y] Arrays.
-function drawXYData(canvas, xyData) {
-  drawAxes(canvas);
+function drawXYData(canvas, xyData, hasXAxes=true) {
+  drawAxes(canvas, hasXAxes);
   const ctx = canvas.getContext('2d');
   for (let i = 0; i < xyData.length; ++i) {
     ctx.beginPath();
@@ -148,6 +154,56 @@ function toNormalizedTensors(xyData, order) {
   ];
 }
 
+// Generate training error curve
+function trainLossGen(canvas, epochs, trainLogs) {
+  const data = [];
+  const max = Math.max.apply(Math, trainLogs);
+  const min = Math.min.apply(Math, trainLogs);
+  // console.log("Max", max);
+
+  var i = 0
+  for (let x = -canvas.width / 2 + 10; x < canvas.width / 2 - 10;
+       x += (canvas.width - 20) / epochs) {
+    data.push([
+      x, (trainLogs[i] - min) / (max - min) * (canvas.height - 20) - (canvas.height - 20)/2
+    ]);
+    i++;
+  }
+  return data;
+}
+
+async function renderResult(trainLogs) {
+  let xyData = trainLossGen(lossCanvas, +epochsElement.value, trainLogs);
+  // console.log("xyData", xyData)
+  drawXYData(lossCanvas, xyData, false);  
+}
+
+
+// ============ DONE WITH HELPER FUNCTIONS ==============
+
+/**
+ * Builds and returns Multi Layer Perceptron Regression Model
+ * with 2 hidden layers, each with 10 units activated by sigmoid.
+ *
+ * @returns {tf.Sequential} The multi layer perceptron regression mode  l.
+ */
+function multiLayerPerceptronRegressionModel2Hidden(inputShape) {
+  const model = tf.sequential();
+  model.add(tf.layers.dense({
+    inputShape: [inputShape],
+    units: +numNeural.value,
+    activation: 'sigmoid',
+    kernelInitializer: 'leCunNormal'
+  }));
+  model.add(tf.layers.dense(
+      {units: +numNeural.value, activation: 'sigmoid', kernelInitializer: 'leCunNormal'}));
+  model.add(tf.layers.dense({units: 1}));
+
+  model.summary();
+  return model;
+};
+
+
 // Fit a model for polynomial regression.
 //
 // Args:
@@ -174,17 +230,30 @@ async function fitModel(xyData, epochs, learningRate) {
   const input = tf.input({shape: [order + 1]});
   const linearLayer =
       tf.layers.dense({units: 1, kernelInitializer: 'Zeros', useBias: false});
-  const output = linearLayer.apply(input);
-  const model = tf.model({inputs: input, outputs: output});
+  // Linear model:
+  // const output = linearLayer.apply(input);
+  // const model = tf.model({inputs: input, outputs: output});
+  // Neutral network model:
+  const model = multiLayerPerceptronRegressionModel2Hidden(order + 1)
+  // console.log('Model:', model);
   const sgd = tf.train.sgd(learningRate);
   model.compile({optimizer: sgd, loss: 'meanSquaredError'});
+  const trainLogs = []
   await model.fit(xData, yData, {
     batchSize: batchSize,
     epochs: epochs,
+    callbacks: {
+      onEpochEnd: async (epoch, logs) => {
+        // Plot the loss values at the end of every training epoch.
+        trainLogs.push(logs['loss']);   
+      },
+    }
   });
-  console.log(
-      'Model weights (normalized):',
-      model.trainableWeights[0].read().dataSync());
+  // console.log("trainLogs", trainLogs)
+  renderResult(trainLogs);
+  // console.log(
+  //     'Model weights (normalized):',
+  //     model.trainableWeights[0].read().dataSync());
   return [model, xPowerMeans, xPowerStddevs, yMean, yStddev];
 }
 
@@ -245,7 +314,7 @@ async function fitAndRender() {
     +cubicCoeffElement.value, +quadCoeffElement.value,
     +linearCoeffElement.value, +constCoeffElement.value
   ];
-  console.log('True coefficients: ' + JSON.stringify(coeffs));
+  // console.log('True coefficients: ' + JSON.stringify(coeffs));
   let xyData = generateXYData(canvas, coeffs);
   drawXYData(canvas, xyData);
   const fitOutputs = await fitModel(xyData, epochs, learningRate);
@@ -263,6 +332,7 @@ const quadCoeffElement = document.getElementById('quad-coeff');
 const linearCoeffElement = document.getElementById('linear-coeff');
 const constCoeffElement = document.getElementById('const-coeff');
 
+const numNeural = document.getElementById('num-neural');
 const epochsElement = document.getElementById('epochs');
 const learningRateElement = document.getElementById('learning-rate');
 
@@ -271,7 +341,9 @@ quadCoeffElement.addEventListener('keyup', fitAndRender);
 linearCoeffElement.addEventListener('keyup', fitAndRender);
 constCoeffElement.addEventListener('keyup', fitAndRender);
 
+numNeural.addEventListener('keyup', fitAndRender);
 epochsElement.addEventListener('keyup', fitAndRender);
 learningRateElement.addEventListener('keyup', fitAndRender);
 
 fitAndRender();
+

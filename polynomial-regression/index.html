@@ -70,24 +70,37 @@ limitations under the License.
     </section>
 
     <section>
-      <p class="section-head">Training Parameters</p>
+      <p class="section-head">Training Parameters for a Multi-layer Perceptron with 2 Hidden Layer and Sigmoid Activation Function</p>
+      <div class="input-div">
+        <span>Number of Neural Per Layer:</span>
+        <input id="num-neural" value="5"></input>
+      </div>
       <div class="input-div">
         <span>Learning rate:</span>
         <input id="learning-rate" value="0.5"></input>
       </div>
       <div class="input-div">
         <span>Epochs:</span>
-        <input id="epochs" value="40"></input>
+        <input id="epochs" value="5"></input>
       </div>
     </section>
 
     <section>
-      <p class="section-head">Model Output</p>
+      <p class="section-head">Model Output Plotting</p>
       <p>We plot a curve using y-coordinate predictions the model has learned to make for each x-coordinate.</p>
       <div>
-        <canvas id="canvas" height="600" width="800"></canvas>
+        <canvas id="plot" height="600" width="800"></canvas>
       </div>
     </section>
+
+    <section>
+      <p class="section-head">Training Error</p>
+      <p>We plot the training error curve, and the final error.</p>
+      <div>
+        <canvas id="lossCanvas" height="600" width="800"></canvas>
+      </div>
+    </section>
+
   </div>
 </body>
 
